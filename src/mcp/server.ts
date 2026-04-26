@@ -1,7 +1,8 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import express, { Express, Response } from 'express';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 
 type ServerCapabilities = {
@@ -87,7 +88,7 @@ export class McpServer {
         this.app.get(path, (_, res: Response) => {
             const transport = new SSEServerTransport(path, res);
             this.trackConnection(transport);
-            
+
             this.server.connect(transport).catch(error => {
                 this.untrackConnection(transport);
                 console.error('Failed to connect transport:', error);
@@ -103,6 +104,76 @@ export class McpServer {
         await new Promise<void>((resolve) => {
             this.app.listen(port, () => {
                 console.info(`Server listening on port ${port}`);
+                resolve();
+            });
+        });
+    }
+
+    async connectHTTP(port: number = 3002, host: string = '127.0.0.1', authToken?: string): Promise<void> {
+        const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined,
+        });
+        this.trackConnection(transport);
+
+        await this.server.connect(transport);
+
+        const app = express();
+        app.use(cors());
+        app.use(express.json());
+
+        // Bearer auth middleware
+        if (authToken) {
+            app.use((req: Request, res: Response, next) => {
+                const header = req.headers.authorization || '';
+                const token = header.startsWith('Bearer ') ? header.slice(7) : header;
+                if (token !== authToken) {
+                    res.status(401).json({ error: 'Unauthorized' });
+                    return;
+                }
+                next();
+            });
+        }
+
+        app.post('/mcp', async (req: Request, res: Response) => {
+            try {
+                await transport.handleRequest(req, res, req.body);
+            } catch (error) {
+                console.error('Failed to handle MCP request:', error);
+                if (!res.headersSent) {
+                    res.status(500).json({
+                        jsonrpc: '2.0',
+                        error: { code: -32603, message: 'Internal server error' },
+                        id: null,
+                    });
+                }
+            }
+        });
+
+        app.get('/mcp', async (req: Request, res: Response) => {
+            try {
+                await transport.handleRequest(req, res);
+            } catch (error) {
+                console.error('Failed to handle MCP GET request:', error);
+                if (!res.headersSent) {
+                    res.status(500).end();
+                }
+            }
+        });
+
+        app.delete('/mcp', async (req: Request, res: Response) => {
+            try {
+                await transport.handleRequest(req, res);
+            } catch (error) {
+                console.error('Failed to handle MCP DELETE request:', error);
+                if (!res.headersSent) {
+                    res.status(500).end();
+                }
+            }
+        });
+
+        await new Promise<void>((resolve) => {
+            app.listen(port, host, () => {
+                console.info(`HTTP transport listening on http://${host}:${port}`);
                 resolve();
             });
         });

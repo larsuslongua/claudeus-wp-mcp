@@ -107,11 +107,16 @@ async function main() {
         log.info('Registered MCP tools');
 
         // Connect to transport based on environment
-        const transportType = process.env.TRANSPORT_TYPE || 'stdio';
-        const port = process.env.PORT ? parseInt(process.env.PORT) : 4000;
+        const transportType = process.env.MCP_TRANSPORT || 'stdio';
+        const port = process.env.MCP_PORT ? parseInt(process.env.MCP_PORT, 10) : 4000;
+        const host = process.env.MCP_HOST || '127.0.0.1';
         const path = process.env.PATH || '/';
+        const authToken = process.env.MCP_AUTH_TOKEN;
 
-        if (transportType === 'stdio') {
+        if (transportType === 'http') {
+            log.info(`Starting server with HTTP transport on http://${host}:${port}`);
+            await mcpServer.connectHTTP(port, host, authToken);
+        } else if (transportType === 'stdio') {
             log.info('Starting server with stdio transport');
             await mcpServer.connectStdio();
         } else {
