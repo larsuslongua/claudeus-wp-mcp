@@ -70,7 +70,8 @@ export function registerTools(server: Server, clients: Map<string, ClientMap>) {
     });
 
     server.setRequestHandler(ListResourceTemplatesRequestSchema, async (request) => {
-        const resourceId = request.params?.id;
+        const params = request.params as { id?: string; _meta?: unknown; cursor?: string } | undefined;
+        const resourceId = params?.id;
         if (!resourceId || typeof resourceId !== 'string') {
             console.error('No resource ID provided for templates');
             return { resourceTemplates: [] };
@@ -85,7 +86,8 @@ export function registerTools(server: Server, clients: Map<string, ClientMap>) {
 
     server.setRequestHandler(ListToolsRequestSchema, async (request) => {
         // Get the site from request params or use default
-        const site = (request.params?.site as string) || DEFAULT_SITE;
+        const params = request.params as { site?: string; _meta?: unknown; cursor?: string } | undefined;
+        const site = params?.site || DEFAULT_SITE;
         const client = clients.get(site);
 
         if (!client) {

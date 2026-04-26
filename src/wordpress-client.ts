@@ -38,7 +38,7 @@ export class WordPressClient extends BaseApiClient {
               list: true
             }
           }
-        }
+        } as any
       }
     });
     
