@@ -70,7 +70,9 @@ export function registerTools(server: Server, clients: Map<string, ClientMap>) {
     });
 
     server.setRequestHandler(ListResourceTemplatesRequestSchema, async (request) => {
-        const resourceId = request.params?.id;
+        // SDK 1.29+ narrowed params type; we pass custom 'id' for resource routing
+        const params = request.params as { id?: string; _meta?: unknown; cursor?: string } | undefined;
+        const resourceId = params?.id;
         if (!resourceId || typeof resourceId !== 'string') {
             console.error('No resource ID provided for templates');
             return { resourceTemplates: [] };
@@ -84,12 +86,21 @@ export function registerTools(server: Server, clients: Map<string, ClientMap>) {
     // ==========================================
 
     server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-        // Get the site from request params or use default
-        const site = (request.params?.site as string) || DEFAULT_SITE;
-        const client = clients.get(site);
+        // SDK 1.29+ narrowed params type; we pass custom 'site' for multi-site routing
+        const params = request.params as { site?: string; _meta?: unknown; cursor?: string } | undefined;
+        const requestedSite = params?.site;
+        let client = clients.get(requestedSite ?? DEFAULT_SITE);
+
+        // Fallback: when no site was requested and DEFAULT_SITE is absent from wp-sites.json,
+        // use the first registered site so tools/list doesn't fail for installs that never
+        // defined a site named "default_test".
+        if (!client && !requestedSite) {
+            const firstKey = clients.keys().next().value;
+            if (firstKey) client = clients.get(firstKey);
+        }
 
         if (!client) {
-            throw new Error(`Unknown site: ${site}`);
+            throw new Error(`Unknown site: ${requestedSite ?? DEFAULT_SITE}`);
         }
 
         const capabilities = client.posts.site.capabilities;
